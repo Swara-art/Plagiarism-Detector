@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Student Dashboard — PlagiaGuard</title>
+<link rel="stylesheet" href="../assets/css/common.css"/>
+<style>
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 240px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 24px 0; display: flex; flex-direction: column; position: fixed; top:0; bottom:0; left:0; z-index:50; }
+.sidebar-logo { padding: 0 24px 24px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.sidebar-logo a { font-family: var(--font-display); font-size: 18px; font-weight: 800; color: var(--text); text-decoration:none; }
+.sidebar-logo a span { color: var(--accent); }
+.sidebar-user { padding: 12px 20px; margin-bottom: 8px; }
+.sidebar-user .u-name { font-size: 14px; font-weight: 600; }
+.sidebar-user .u-role { font-size: 11px; color: var(--text-dim); }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--text-dim); font-size: 14px; cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent; }
+.nav-item:hover { color: var(--text); background: var(--surface2); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(124,106,247,0.06); }
+.nav-icon { font-size: 18px; width: 22px; text-align: center; }
+.sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+.content { margin-left: 240px; flex: 1; padding: 32px 36px; min-height: 100vh; }
+.page-header { margin-bottom: 28px; }
+.page-header h1 { font-size: 28px; }
+.page-header p { color: var(--text-dim); font-size: 14px; margin-top: 4px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); }
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(124,106,247,0.05); }
+.upload-zone input { display: none; }
+.upload-icon { font-size: 40px; margin-bottom: 14px; }
+.upload-zone h3 { font-size: 17px; margin-bottom: 6px; }
+.upload-zone p { font-size: 13px; color: var(--text-dim); }
+.file-types { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+.char-count { font-size: 11px; color: var(--text-dimmer); text-align: right; margin-top: 4px; font-family: var(--font-mono); }
+.result-panel { display: none; margin-top: 28px; }
+.result-panel.show { display: block; animation: fadeIn 0.35s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+.result-header { display: flex; align-items: center; gap: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 28px; margin-bottom: 20px; flex-wrap: wrap; }
+.score-big { text-align: center; }
+.score-num { font-family: var(--font-display); font-size: 52px; font-weight: 800; line-height: 1; }
+.score-lbl { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+.result-meta { flex: 1; min-width: 200px; }
+.result-meta h2 { font-size: 20px; margin-bottom: 8px; word-break: break-all; }
+.verdict-text { font-size: 15px; margin-bottom: 14px; }
+.result-bars { display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.bar-row { display: flex; align-items: center; gap: 12px; }
+.bar-label { font-size: 12px; color: var(--text-dim); width: 90px; flex-shrink: 0; }
+.bar-val { font-size: 12px; color: var(--text-dim); width: 38px; text-align: right; font-family: var(--font-mono); }
+.section-title { font-size: 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.flagged-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+.flagged-item { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent3); border-radius: var(--radius-sm); padding: 14px 18px; }
+.flagged-item.medium { border-left-color: #ffc850; }
+.flagged-item.low { border-left-color: var(--accent2); }
+.flagged-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.flagged-source { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+.flagged-reason { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.flagged-text { font-size: 12px; color: var(--text-dimmer); font-family: var(--font-mono); margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; line-height: 1.5; }
+.sources-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 12px; margin-bottom: 24px; }
+.source-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
+.source-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; word-break: break-all; }
+.source-score { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.citations-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px 18px; }
+.citation-item { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); padding: 8px 0; border-bottom: 1px solid var(--border); line-height: 1.7; }
+.citation-item:last-child { border-bottom: none; }
+.summary-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px 20px; font-size: 14px; color: var(--text-dim); line-height: 1.75; margin-bottom: 20px; }
+.loading-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; align-items: center; justify-content: center; flex-direction: column; gap: 16px; backdrop-filter: blur(4px); }
+.loading-overlay.show { display: flex; }
+.loading-text { font-family: var(--font-display); font-size: 16px; color: var(--text); }
+.loading-sub { font-size: 13px; color: var(--text-dim); }
+.big-spinner { width: 52px; height: 52px; border: 3px solid rgba(124,106,247,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><a href="../index.html">Plagia<span>Guard</span></a></div>
+    <div class="sidebar-user">
+      <div class="u-name" id="sidebarName">Student</div>
+      <div class="u-role">Student Account</div>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="showTab('text')"        id="nav-text"><span class="nav-icon">📝</span>Text Check</div>
+      <div class="nav-item"        onclick="showTab('file')"        id="nav-file"><span class="nav-icon">📄</span>File Upload</div>
+      <div class="nav-item"        onclick="showTab('code')"        id="nav-code"><span class="nav-icon">💻</span>Code Check</div>
+      <div class="nav-item"        onclick="showTab('handwritten')" id="nav-handwritten"><span class="nav-icon">✍️</span>Handwritten</div>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn btn-secondary" style="width:100%;justify-content:center;" onclick="logout()">Sign Out</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <!-- TEXT -->
+    <div class="tab-panel active" id="panel-text">
+      <div class="page-header"><h1>Text Plagiarism Check</h1><p>Paste your text for instant semantic similarity analysis.</p></div>
+      <div class="card">
+        <div class="form-group">
+          <label>Your Text</label>
+          <textarea id="textInput" placeholder="Paste your essay, paragraph, or any text here..." oninput="updateCharCount()" rows="10"></textarea>
+          <div class="char-count"><span id="charCount">0</span> characters</div>
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="checkText()">🔍 Analyse Text</button>
+      </div>
+      <div class="result-panel" id="result-text"></div>
+    </div>
+
+    <!-- FILE -->
+    <div class="tab-panel" id="panel-file">
+      <div class="page-header"><h1>File Upload Check</h1><p>Upload a PDF, DOCX, or TXT file for plagiarism analysis.</p></div>
+      <div class="card">
+        <div class="upload-zone" id="fileZone" onclick="document.getElementById('fileInput').click()"
+             ondragover="dragOver(event,'fileZone')" ondragleave="dragLeave('fileZone')"
+             ondrop="dropFile(event,'fileInput','fileLabel','fileZone')">
+          <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.pptx,.html" onchange="fileSelected('fileInput','fileLabel')"/>
+          <div class="upload-icon">📄</div>
+          <h3>Drop your file here</h3>
+          <p id="fileLabel">or click to browse</p>
+          <div class="file-types">
+            <span class="tag">PDF</span><span class="tag">DOCX</span><span class="tag">TXT</span><span class="tag">PPTX</span><span class="tag">HTML</span>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" style="margin-top:20px;" onclick="checkFile()">🔍 Analyse File</button>
+      </div>
+      <div class="result-panel" id="result-file"></div>
+    </div>
+
+    <!-- CODE -->
+    <div class="tab-panel" id="panel-code">
+      <div class="page-header"><h1>Code Plagiarism Check</h1><p>Paste source code for AST-based structural similarity analysis.</p></div>
+      <div class="card">
+        <div class="form-group">
+          <label>Language</label>
+          <select id="codeLang" style="max-width:200px;">
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="java">Java</option>
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Source Code</label>
+          <textarea id="codeInput" placeholder="Paste your source code here..." style="font-family:var(--font-mono);font-size:13px;" rows="14"></textarea>
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="checkCode()">🔍 Analyse Code</button>
+      </div>
+      <div class="result-panel" id="result-code"></div>
+    </div>
+
+    <!-- HANDWRITTEN -->
+    <div class="tab-panel" id="panel-handwritten">
+      <div class="page-header"><h1>Handwritten Submission</h1><p>Upload a scanned handwritten page for OCR + plagiarism check.</p></div>
+      <div class="card">
+        <div class="upload-zone" id="hwZone" onclick="document.getElementById('hwInput').click()"
+             ondragover="dragOver(event,'hwZone')" ondragleave="dragLeave('hwZone')"
+             ondrop="dropFile(event,'hwInput','hwLabel','hwZone')">
+          <input type="file" id="hwInput" accept=".jpg,.jpeg,.png,.bmp,.tiff,.webp" onchange="fileSelected('hwInput','hwLabel')"/>
+          <div class="upload-icon">✍️</div>
+          <h3>Drop your handwritten image</h3>
+          <p id="hwLabel">or click to browse — JPG, PNG, TIFF</p>
+          <div class="file-types">
+            <span class="tag">JPG</span><span class="tag">PNG</span><span class="tag">TIFF</span><span class="tag">BMP</span>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--text-dim);margin-top:14px;">⚠️ Requires Tesseract OCR installed on the server. Use high-contrast, well-lit scans for best results.</p>
+        <button class="btn btn-primary btn-lg" style="margin-top:16px;" onclick="checkHandwritten()">🔍 Extract &amp; Analyse</button>
+      </div>
+      <div class="result-panel" id="result-hw"></div>
+    </div>
+  </main>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="big-spinner"></div>
+  <div class="loading-text" id="loadingText">Analysing...</div>
+  <div class="loading-sub" id="loadingSub">Running semantic similarity search</div>
+</div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+const name = localStorage.getItem("pg_name");
+const role = localStorage.getItem("pg_role");
+if (!name || role !== "student") window.location.href = "../index.html";
+document.getElementById("sidebarName").textContent = name || "Student";
+
+function logout() { localStorage.clear(); window.location.href = "../index.html"; }
+
+function showTab(tab) {
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.getElementById("panel-" + tab).classList.add("active");
+  document.getElementById("nav-" + tab).classList.add("active");
+}
+
+function updateCharCount() {
+  document.getElementById("charCount").textContent = document.getElementById("textInput").value.length;
+}
+
+function showLoading(text, sub) {
+  document.getElementById("loadingText").textContent = text || "Analysing...";
+  document.getElementById("loadingSub").textContent  = sub  || "";
+  document.getElementById("loadingOverlay").classList.add("show");
+}
+function hideLoading() { document.getElementById("loadingOverlay").classList.remove("show"); }
+
+function dragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add("drag-over"); }
+function dragLeave(id)   { document.getElementById(id).classList.remove("drag-over"); }
+function dropFile(e, inputId, labelId, zoneId) {
+  e.preventDefault(); dragLeave(zoneId);
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const dt = new DataTransfer(); dt.items.add(file);
+  document.getElementById(inputId).files = dt.files;
+  fileSelected(inputId, labelId);
+}
+function fileSelected(inputId, labelId) {
+  const f = document.getElementById(inputId).files[0];
+  if (f) document.getElementById(labelId).textContent = f.name + " (" + (f.size/1024).toFixed(1) + " KB)";
+}
+
+async function checkText() {
+  const content = document.getElementById("textInput").value.trim();
+  if (!content || content.length < 50) { showToast("Enter at least 50 characters.", "error"); return; }
+  showLoading("Analysing text...", "Encoding semantics and searching corpus");
+  try {
+    const res  = await fetch(API + "/student/check/text", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({content, mode: "semantic"})
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
+    renderReport(data, "result-text");
+  } catch(e) { showToast("Server unreachable.", "error"); }
+  finally { hideLoading(); }
+}
+
+async function checkFile() {
+  const file = document.getElementById("fileInput").files[0];
+  if (!file) { showToast("Select a file first.", "error"); return; }
+  showLoading("Processing file...", "Extracting text and running analysis");
+  const fd = new FormData(); fd.append("file", file);
+  try {
+    const res  = await fetch(API + "/student/check/file", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
+    renderReport(data, "result-file");
+  } catch(e) { showToast("Server unreachable.", "error"); }
+  finally { hideLoading(); }
+}
+
+async function checkCode() {
+  const code     = document.getElementById("codeInput").value.trim();
+  const language = document.getElementById("codeLang").value;
+  if (!code || code.length < 20) { showToast("Enter at least 20 characters of code.", "error"); return; }
+  showLoading("Analysing code...", "Parsing AST structure and comparing");
+  try {
+    const res  = await fetch(API + "/student/check/code", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({code, language})
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
+    renderCodeReport(data, "result-code");
+  } catch(e) { showToast("Server unreachable.", "error"); }
+  finally { hideLoading(); }
+}
+
+async function checkHandwritten() {
+  const file = document.getElementById("hwInput").files[0];
+  if (!file) { showToast("Select an image first.", "error"); return; }
+  showLoading("Processing handwriting...", "Running OCR and similarity analysis");
+  const fd = new FormData(); fd.append("file", file);
+  try {
+    const res  = await fetch(API + "/student/check/handwritten", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
+    renderReport(data, "result-hw");
+  } catch(e) { showToast("Server unreachable.", "error"); }
+  finally { hideLoading(); }
+}
+
+/* ---- Render helpers ---- */
+function scoreColor(s)  { return s >= 60 ? "var(--accent3)" : s >= 30 ? "#ffc850" : "var(--accent2)"; }
+function originColor(s) { return s >= 70 ? "var(--accent2)" : s >= 50 ? "#ffc850" : "var(--accent3)"; }
+function badgeClass(s)  { return s >= 60 ? "badge-red" : s >= 35 ? "badge-yellow" : "badge-green"; }
+function flagClass(s)   { return s >= 0.75 ? "" : s >= 0.50 ? "medium" : "low"; }
+
+function renderReport(data, containerId) {
+  const plag    = data.plagiarism_score  || 0;
+  const orig    = data.originality_score || 100;
+  const flagged = data.flagged_sections  || [];
+  const sources = data.matched_sources   || [];
+  const cites   = data.citations         || [];
+
+  let html = `
+  <div class="result-header">
+    <div class="score-big">
+      <div class="score-num" style="color:${scoreColor(plag)}">${plag.toFixed(1)}%</div>
+      <div class="score-lbl">Plagiarism</div>
+    </div>
+    <div style="width:1px;height:80px;background:var(--border);flex-shrink:0;"></div>
+    <div class="score-big">
+      <div class="score-num" style="color:${originColor(orig)}">${orig.toFixed(1)}%</div>
+      <div class="score-lbl">Originality</div>
+    </div>
+    <div class="result-meta">
+      <h2>${data.filename || "Submission"}</h2>
+      <div class="verdict-text">
+        <span class="badge ${badgeClass(plag)}">${data.verdict || ""}</span>
+        &nbsp;<span style="font-size:13px;color:var(--text-dim);">Confidence: ${data.confidence || "—"}</span>
+      </div>
+      <div class="result-bars">
+        <div class="bar-row">
+          <span class="bar-label">Plagiarism</span>
+          <div class="progress-bar" style="flex:1">
+            <div class="progress-bar-fill ${plag>=60?'red':plag>=30?'yellow':'green'}" style="width:${plag}%"></div>
+          </div>
+          <span class="bar-val">${plag.toFixed(1)}%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Original</span>
+          <div class="progress-bar" style="flex:1">
+            <div class="progress-bar-fill green" style="width:${orig}%"></div>
+          </div>
+          <span class="bar-val">${orig.toFixed(1)}%</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  if (data.summary) html += `<div class="summary-box">${data.summary}</div>`;
+
+  if (flagged.length > 0) {
+    html += `<div class="section-title">⚠️ Flagged Sections <span class="badge badge-red">${flagged.length}</span></div><div class="flagged-list">`;
+    flagged.forEach(f => {
+      const pct = (f.match_score * 100).toFixed(0);
+      html += `<div class="flagged-item ${flagClass(f.match_score)}">
+        <div class="flagged-top">
+          <span class="badge badge-red">${pct}% match</span>
+          <span class="flagged-source">← ${f.matched_source}</span>
+        </div>
+        <div class="flagged-reason">${f.reason}</div>
+        ${f.matched_text ? `<div class="flagged-text">"${f.matched_text.substring(0,180)}..."</div>` : ""}
+      </div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div class="flagged-item low" style="border-left-color:var(--accent2);margin-bottom:20px;">
+      <div class="flagged-top"><span class="badge badge-green">✓ No Significant Flags</span></div>
+      <div class="flagged-reason">No sections exceeded the similarity threshold.</div>
+    </div>`;
+  }
+
+  if (sources.length > 0) {
+    html += `<div class="section-title">📚 Matched Sources</div><div class="sources-grid">`;
+    sources.forEach(s => {
+      const raw = s.max_similarity ?? s.similarity ?? 0;
+      const pct = (raw > 1 ? raw : raw * 100).toFixed(1);
+      html += `<div class="source-card">
+        <div class="source-name">${s.source_document}</div>
+        <div class="source-score">${pct}% similarity · ${s.matched_chunks || 1} chunk(s)</div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (cites.length > 0) {
+    html += `<div class="section-title">📌 Citation Suggestions</div><div class="citations-box">`;
+    cites.forEach(c => { html += `<div class="citation-item">${c}</div>`; });
+    html += `</div>`;
+  }
+
+  const el = document.getElementById(containerId);
+  el.innerHTML = html; el.classList.add("show");
+  el.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function renderCodeReport(data, containerId) {
+  const plag   = data.plagiarism_score  || 0;
+  const orig   = data.originality_score || 100;
+  const blocks = data.flagged_blocks    || [];
+  const sources= data.matched_sources   || [];
+
+  let html = `
+  <div class="result-header">
+    <div class="score-big">
+      <div class="score-num" style="color:${scoreColor(plag)}">${plag.toFixed(1)}%</div>
+      <div class="score-lbl">Plagiarism</div>
+    </div>
+    <div style="width:1px;height:80px;background:var(--border);flex-shrink:0;"></div>
+    <div class="score-big">
+      <div class="score-num" style="color:${originColor(orig)}">${orig.toFixed(1)}%</div>
+      <div class="score-lbl">Originality</div>
+    </div>
+    <div class="result-meta">
+      <h2>Code — <span class="tag">${data.language || "python"}</span></h2>
+      <div class="verdict-text"><span class="badge ${badgeClass(plag)}">${data.verdict || ""}</span></div>
+      <div style="font-size:13px;color:var(--text-dim);margin-top:8px;">
+        ${data.functions_analysed || 0} function(s) analysed · ${blocks.length} block(s) flagged
+      </div>
+    </div>
+  </div>`;
+
+  if (data.summary) html += `<div class="summary-box">${data.summary}</div>`;
+
+  if (blocks.length > 0) {
+    html += `<div class="section-title">⚠️ Flagged Code Blocks <span class="badge badge-red">${blocks.length}</span></div><div class="flagged-list">`;
+    blocks.forEach(b => {
+      const pct = (b.match_score * 100).toFixed(0);
+      html += `<div class="flagged-item ${flagClass(b.match_score)}">
+        <div class="flagged-top">
+          <span class="badge badge-red">${pct}% match</span>
+          <span class="tag">Lines ${b.lines}</span>
+          ${b.function_name ? `<span class="tag">fn: ${b.function_name}</span>` : ""}
+          <span class="flagged-source">← ${b.matched_source}</span>
+        </div>
+        <div class="flagged-reason">${b.reason}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div class="flagged-item low" style="border-left-color:var(--accent2);margin-bottom:20px;">
+      <div class="flagged-top"><span class="badge badge-green">✓ No Structural Matches Found</span></div>
+    </div>`;
+  }
+
+  if (sources.length > 0) {
+    html += `<div class="section-title">📚 Matched Sources</div><div class="sources-grid">`;
+    sources.forEach(s => {
+      const raw = s.max_similarity ?? 0;
+      const pct = (raw > 1 ? raw : raw * 100).toFixed(1);
+      html += `<div class="source-card"><div class="source-name">${s.source_document}</div><div class="source-score">${pct}% similarity</div></div>`;
+    });
+    html += `</div>`;
+  }
+
+  const el = document.getElementById(containerId);
+  el.innerHTML = html; el.classList.add("show");
+  el.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function showToast(msg, type="info") {
+  const t = document.createElement("div");
+  t.className = "toast toast-" + type; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3500);
+}
+</script>
+</body>
+</html>

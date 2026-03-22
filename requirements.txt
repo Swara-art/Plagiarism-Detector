@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+chromadb
+sentence-transformers
+python-docx
+pypdf
+python-multipart
+python-pptx
+beautifulsoup4
+wikipedia
+python-jose[cryptography]
+passlib[bcrypt]
+pytesseract
+Pillow
