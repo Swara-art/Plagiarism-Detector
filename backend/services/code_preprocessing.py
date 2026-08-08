@@ -1,61 +1,133 @@
-import re, ast, hashlib
+import re
+from tree_sitter_languages import get_parser
 
-def normalize_python_code(code: str) -> str:
-    code = re.sub(r'#.*', '', code)
-    code = re.sub(r'""".*?"""', '""""""', code, flags=re.DOTALL)
-    code = re.sub(r"'''.*?'''", "''''''", code, flags=re.DOTALL)
-    lines = [line.rstrip() for line in code.splitlines()]
-    return '\n'.join(line for line in lines if line.strip())
+SUPPORTED_LANGUAGES = {
+    "python": "python",
+    "py": "python",
+    "javascript": "javascript",
+    "js": "javascript",
+    "c": "c",
+    "cpp": "cpp",
+    "c++": "cpp",
+    "java": "java",
+    "go": "go",
+    "rust": "rust",
+    "rs": "rust"
+}
 
-def extract_ast_structure(code: str) -> str:
+# Node types representing functions in different programming languages in tree-sitter
+FUNCTION_NODE_TYPES = {
+    "python": {"function_definition", "async_function_definition"},
+    "javascript": {"function_declaration", "arrow_function", "generator_function"},
+    "c": {"function_definition"},
+    "cpp": {"function_definition"},
+    "java": {"method_declaration"},
+    "go": {"function_declaration", "method_declaration"},
+    "rust": {"function_item"}
+}
+
+def extract_ast_structure(code: str, language: str = "python") -> str:
+    lang = SUPPORTED_LANGUAGES.get(language.lower(), "python")
     try:
-        tree = ast.parse(code)
-    except SyntaxError:
+        parser = get_parser(lang)
+        tree = parser.parse(code.encode("utf-8"))
+        
+        # Traverse tree and extract node types for language-agnostic AST shape comparison
+        tokens = []
+        cursor = tree.walk()
+        has_more = True
+        
+        while has_more:
+            node = cursor.node
+            tokens.append(node.type)
+            
+            # Depth-first traversal
+            if cursor.goto_first_child():
+                continue
+            if cursor.goto_next_sibling():
+                continue
+            
+            # Backtrack to parent
+            backtracking = True
+            while backtracking:
+                if not cursor.goto_parent():
+                    has_more = False
+                    backtracking = False
+                elif cursor.goto_next_sibling():
+                    backtracking = False
+        return " ".join(tokens)
+    except Exception:
+        # Fallback to character normalization if parsing fails
         return code
 
-    class StructureExtractor(ast.NodeVisitor):
-        def __init__(self): self.tokens = []
-        def generic_visit(self, node):
-            t = type(node).__name__
-            if t not in ('Constant','Num','Str','Bytes','NameConstant','Ellipsis'):
-                self.tokens.append(t)
-            ast.NodeVisitor.generic_visit(self, node)
-
-    ex = StructureExtractor()
-    ex.visit(tree)
-    return ' '.join(ex.tokens)
-
-def fingerprint_code(code: str) -> str:
-    return hashlib.sha256(extract_ast_structure(normalize_python_code(code)).encode()).hexdigest()
-
-def extract_functions(code: str) -> list:
+def extract_functions(code: str, language: str = "python") -> list:
+    lang = SUPPORTED_LANGUAGES.get(language.lower(), "python")
+    func_types = FUNCTION_NODE_TYPES.get(lang, {"function_definition"})
     functions = []
+    
     try:
-        tree  = ast.parse(code)
-        lines = code.splitlines()
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                start     = node.lineno
-                end       = node.end_lineno if hasattr(node, 'end_lineno') else node.lineno + 10
-                func_code = '\n'.join(lines[start-1:end])
+        parser = get_parser(lang)
+        tree = parser.parse(code.encode("utf-8"))
+        
+        cursor = tree.walk()
+        has_more = True
+        
+        while has_more:
+            node = cursor.node
+            if node.type in func_types:
+                # Find function name child
+                name = "anonymous"
+                for child in node.children:
+                    if child.type in ("identifier", "field_identifier"):
+                        name = code[child.start_byte:child.end_byte]
+                        break
+                
+                start_row = node.start_point[0] + 1
+                end_row = node.end_point[0] + 1
+                func_code = code[node.start_byte:node.end_byte]
+                
                 functions.append({
-                    "name": node.name, "start_line": start, "end_line": end,
-                    "code": func_code, "structure": extract_ast_structure(func_code)
+                    "name": name,
+                    "start_line": start_row,
+                    "end_line": end_row,
+                    "code": func_code,
+                    "structure": extract_ast_structure(func_code, language)
                 })
+            
+            # Traversal
+            if cursor.goto_first_child():
+                continue
+            if cursor.goto_next_sibling():
+                continue
+            
+            # Backtrack
+            backtracking = True
+            while backtracking:
+                if not cursor.goto_parent():
+                    has_more = False
+                    backtracking = False
+                elif cursor.goto_next_sibling():
+                    backtracking = False
     except Exception:
         pass
+        
     return functions
 
 def jaccard_similarity(s1: set, s2: set) -> float:
     if not s1 and not s2: return 1.0
     return len(s1 & s2) / len(s1 | s2) if (s1 | s2) else 0.0
 
-def structural_similarity(code1: str, code2: str) -> float:
+def structural_similarity(code1: str, code2: str, language: str = "python") -> float:
     def ngrams(tokens, n):
         return set(tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1))
-    s1 = extract_ast_structure(normalize_python_code(code1)).split()
-    s2 = extract_ast_structure(normalize_python_code(code2)).split()
+    
+    # Extract AST structure tokens using tree-sitter
+    s1 = extract_ast_structure(code1, language).split()
+    s2 = extract_ast_structure(code2, language).split()
+    
     if not s1 or not s2: return 0.0
     bi  = jaccard_similarity(ngrams(s1,2), ngrams(s2,2))
     tri = jaccard_similarity(ngrams(s1,3), ngrams(s2,3))
-    return round(bi*0.4 + tri*0.6, 4)
+    
+    # 0.4 weight for bigrams, 0.6 weight for trigrams represents structural similarity balance
+    return round(bi*0.4 + tri*0.6, 4)

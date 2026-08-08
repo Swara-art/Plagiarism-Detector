@@ -179,8 +179,9 @@
   <div class="loading-sub" id="loadingSub">Running semantic similarity search</div>
 </div>
 
+<script src="../assets/js/config.js"></script>
 <script>
-const API = "http://127.0.0.1:8000";
+const API = CONFIG.API_BASE_URL;
 const name = localStorage.getItem("pg_name");
 const role = localStorage.getItem("pg_role");
 if (!name || role !== "student") window.location.href = "../index.html";
@@ -226,7 +227,7 @@ async function checkText() {
   if (!content || content.length < 50) { showToast("Enter at least 50 characters.", "error"); return; }
   showLoading("Analysing text...", "Encoding semantics and searching corpus");
   try {
-    const res  = await fetch(API + "/student/check/text", {
+    const res  = await authFetch(API + "/student/check/text", {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({content, mode: "semantic"})
     });
@@ -243,7 +244,7 @@ async function checkFile() {
   showLoading("Processing file...", "Extracting text and running analysis");
   const fd = new FormData(); fd.append("file", file);
   try {
-    const res  = await fetch(API + "/student/check/file", { method: "POST", body: fd });
+    const res  = await authFetch(API + "/student/check/file", { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
     renderReport(data, "result-file");
@@ -257,7 +258,7 @@ async function checkCode() {
   if (!code || code.length < 20) { showToast("Enter at least 20 characters of code.", "error"); return; }
   showLoading("Analysing code...", "Parsing AST structure and comparing");
   try {
-    const res  = await fetch(API + "/student/check/code", {
+    const res  = await authFetch(API + "/student/check/code", {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({code, language})
     });
@@ -274,7 +275,7 @@ async function checkHandwritten() {
   showLoading("Processing handwriting...", "Running OCR and similarity analysis");
   const fd = new FormData(); fd.append("file", file);
   try {
-    const res  = await fetch(API + "/student/check/handwritten", { method: "POST", body: fd });
+    const res  = await authFetch(API + "/student/check/handwritten", { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
     renderReport(data, "result-hw");
@@ -340,7 +341,7 @@ function renderReport(data, containerId) {
       html += `<div class="flagged-item ${flagClass(f.match_score)}">
         <div class="flagged-top">
           <span class="badge badge-red">${pct}% match</span>
-          <span class="flagged-source">← ${f.matched_source}</span>
+          <span class="flagged-source">← ${f.url ? `<a href="${f.url}" target="_blank" style="text-decoration: underline; color: var(--accent);">${f.matched_source}</a>` : f.matched_source}</span>
         </div>
         <div class="flagged-reason">${f.reason}</div>
         ${f.matched_text ? `<div class="flagged-text">"${f.matched_text.substring(0,180)}..."</div>` : ""}
@@ -360,7 +361,7 @@ function renderReport(data, containerId) {
       const raw = s.max_similarity ?? s.similarity ?? 0;
       const pct = (raw > 1 ? raw : raw * 100).toFixed(1);
       html += `<div class="source-card">
-        <div class="source-name">${s.source_document}</div>
+        <div class="source-name">${s.url ? `<a href="${s.url}" target="_blank" style="text-decoration: underline; color: var(--accent);">${s.source_document}</a>` : s.source_document}</div>
         <div class="source-score">${pct}% similarity · ${s.matched_chunks || 1} chunk(s)</div>
       </div>`;
     });
@@ -415,7 +416,7 @@ function renderCodeReport(data, containerId) {
           <span class="badge badge-red">${pct}% match</span>
           <span class="tag">Lines ${b.lines}</span>
           ${b.function_name ? `<span class="tag">fn: ${b.function_name}</span>` : ""}
-          <span class="flagged-source">← ${b.matched_source}</span>
+          <span class="flagged-source">← ${b.url ? `<a href="${b.url}" target="_blank" style="text-decoration: underline; color: var(--accent);">${b.matched_source}</a>` : b.matched_source}</span>
         </div>
         <div class="flagged-reason">${b.reason}</div>
       </div>`;
@@ -432,7 +433,7 @@ function renderCodeReport(data, containerId) {
     sources.forEach(s => {
       const raw = s.max_similarity ?? 0;
       const pct = (raw > 1 ? raw : raw * 100).toFixed(1);
-      html += `<div class="source-card"><div class="source-name">${s.source_document}</div><div class="source-score">${pct}% similarity</div></div>`;
+      html += `<div class="source-card"><div class="source-name">${s.url ? `<a href="${s.url}" target="_blank" style="text-decoration: underline; color: var(--accent);">${s.source_document}</a>` : s.source_document}</div><div class="source-score">${pct}% similarity</div></div>`;
     });
     html += `</div>`;
   }

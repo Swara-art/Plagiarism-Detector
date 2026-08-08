@@ -200,8 +200,9 @@
   <div class="loading-sub" id="loadingSub">This may take a moment for large batches</div>
 </div>
 
+<script src="../assets/js/config.js"></script>
 <script>
-const API  = "http://127.0.0.1:8000";
+const API = CONFIG.API_BASE_URL;
 const name = localStorage.getItem("pg_name");
 const role = localStorage.getItem("pg_role");
 if (!name || role !== "teacher") window.location.href = "../index.html";
@@ -267,7 +268,7 @@ async function runBatch() {
   const fd = new FormData();
   batchFiles.forEach(f => fd.append("files", f));
   try {
-    const res  = await fetch(API + "/teacher/batch/upload", { method: "POST", body: fd });
+    const res  = await authFetch(API + "/teacher/batch/upload", { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
     renderBatchResults(data);
@@ -346,7 +347,7 @@ async function runCompare() {
   showLoading("Comparing files...", "Extracting text and computing similarity");
   const fd = new FormData(); fd.append("file_a", a); fd.append("file_b", b);
   try {
-    const res  = await fetch(API + "/teacher/compare", { method: "POST", body: fd });
+    const res  = await authFetch(API + "/teacher/compare", { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
     renderCompareResult(data, "compareResult");
@@ -361,7 +362,7 @@ async function runCodeCompare() {
   showLoading("Comparing code structure...", "Parsing AST and computing n-gram similarity");
   const fd = new FormData(); fd.append("file_a", a); fd.append("file_b", b);
   try {
-    const res  = await fetch(API + "/teacher/compare/code", { method: "POST", body: fd });
+    const res  = await authFetch(API + "/teacher/compare/code", { method: "POST", body: fd });
     const data = await res.json();
     if (!res.ok) { showToast(data.detail || "Error", "error"); return; }
     renderCompareResult(data, "codeCompareResult", true);
@@ -396,7 +397,7 @@ function renderCompareResult(data, containerId, isCode=false) {
           <div class="fi-top">
             <span class="badge badge-red">${pct}%</span>
             ${f.lines ? `<span class="tag">Lines ${f.lines}</span>` : ""}
-            <span style="font-size:12px;color:var(--text-dim);">← ${f.matched_source||""}</span>
+            <span style="font-size:12px;color:var(--text-dim);">← ${f.url ? `<a href="${f.url}" target="_blank" style="text-decoration: underline; color: var(--accent);">${f.matched_source}</a>` : (f.matched_source||"")}</span>
           </div>
           <div class="fi-reason">${f.reason||""}</div>
         </div>`;

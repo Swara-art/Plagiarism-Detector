@@ -2,6 +2,13 @@ fastapi
 uvicorn[standard]
 chromadb
 sentence-transformers
+
+# Note: install PyTorch CPU wheel separately to avoid resolver issues:
+#   pip install --upgrade pip
+#   pip install "torch==2.13.0+cpu" -f https://download.pytorch.org/whl/cpu/torch_stable.html
+# `torch` is intentionally omitted from this file because some installers/timeouts
+# cause pip's resolver to fail when `+cpu` wheels are required.
+
 python-docx
 pypdf
 python-multipart
@@ -10,5 +17,9 @@ beautifulsoup4
 wikipedia
 python-jose[cryptography]
 passlib[bcrypt]
+SQLAlchemy
+psycopg[binary]
+email-validator
+python-dotenv
 pytesseract
 Pillow

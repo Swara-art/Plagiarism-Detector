@@ -265,7 +265,7 @@ User Input → Preprocessing → AI Similarity Engine → ChromaDB Vector Search
 | Technology | Purpose |
 |---|---|
 | Python 3.10+ | Core application language |
-| FastAPI / Flask | REST API server and routing |
+| FastAPI | REST API server and routing |
 
 ### 🤖 AI / ML Engine
 | Technology | Purpose |
@@ -423,8 +423,8 @@ Every submission generates a full, human-readable report:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Swara-art/Techfiesta-Plagiarism-Detector.git
-cd Techfiesta-Plagiarism-Detector
+git clone https://github.com/Swara-art/Plagiarism-Detector.git
+cd Plagiarism-Detector
 ```
 
 ---
@@ -464,11 +464,6 @@ Key packages installed:
 **If using FastAPI:**
 ```bash
 uvicorn main:app --reload --port 8000
-```
-
-**If using Flask:**
-```bash
-python main.py
 ```
 
 The API will be available at: `http://localhost:8000`

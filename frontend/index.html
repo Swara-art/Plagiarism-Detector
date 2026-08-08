@@ -142,46 +142,114 @@ footer { text-align: center; padding: 40px; color: var(--text-dimmer); font-size
 <div class="modal-overlay" id="loginModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
-    <h2>Welcome Back</h2>
-    <p class="modal-sub">Sign in to access your dashboard</p>
+    <h2 id="modalTitle">Welcome Back</h2>
+    <p class="modal-sub" id="modalSub">Sign in to access your dashboard</p>
     <div class="rtabs">
       <button class="rtab" id="tab-student" onclick="setRole('student')">🎓 Student</button>
       <button class="rtab" id="tab-teacher" onclick="setRole('teacher')">👩‍🏫 Teacher</button>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="groupFullName" style="display: none;">
+      <label>Full Name</label>
+      <input type="text" id="regFullName" placeholder="Enter your full name" autocomplete="name"/>
+    </div>
+    <div class="form-group" id="groupUsername" style="display: none;">
       <label>Username</label>
-      <input type="text" id="loginUser" placeholder="Enter username" autocomplete="username"/>
+      <input type="text" id="regUsername" placeholder="Enter username (letters, numbers, dots, underscores)" autocomplete="username"/>
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="loginUser" placeholder="Enter your email" autocomplete="email"/>
     </div>
     <div class="form-group">
       <label>Password</label>
       <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"/>
     </div>
     <div class="err-msg" id="errMsg"></div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="loginBtn" onclick="doLogin()">Sign In</button>
-    <div class="demo-hint">
-      Student demo: <strong>student1 / student123</strong><br/>
-      Teacher demo: <strong>teacher1 / teacher123</strong>
-    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="loginBtn" onclick="handleSubmit()">Sign In</button>
+    <p class="modal-toggle-text" style="text-align: center; margin-top: 15px; font-size: 13px; color: var(--text-dim);">
+      <span id="toggleMessage">Don't have an account?</span> 
+      <a href="#" id="toggleLink" onclick="toggleAuthMode(); return false;" style="font-weight: 600;">Register</a>
+    </p>
   </div>
 </div>
 
+<script src="assets/js/config.js"></script>
 <script>
-const API = "http://127.0.0.1:8000";
+const API = CONFIG.API_BASE_URL;
 let selRole = "student";
+let isLoginMode = true;
 
 function openLogin(role) {
   selRole = role; setRole(role);
+  isLoginMode = true;
+  
+  document.getElementById("modalTitle").textContent = "Welcome Back";
+  document.getElementById("modalSub").textContent = "Sign in to access your dashboard";
+  document.getElementById("groupFullName").style.display = "none";
+  document.getElementById("groupUsername").style.display = "none";
+  document.getElementById("loginBtn").textContent = "Sign In";
+  document.getElementById("toggleMessage").textContent = "Don't have an account?";
+  document.getElementById("toggleLink").textContent = "Register";
+  document.getElementById("errMsg").style.display = "none";
+
   document.getElementById("loginModal").classList.add("active");
   setTimeout(() => document.getElementById("loginUser").focus(), 100);
 }
+
 function closeModal() { document.getElementById("loginModal").classList.remove("active"); }
+
 function setRole(r) {
   selRole = r;
   document.getElementById("tab-student").classList.toggle("active", r === "student");
   document.getElementById("tab-teacher").classList.toggle("active", r === "teacher");
 }
-document.getElementById("loginPass").addEventListener("keydown", e => { if(e.key==="Enter") doLogin(); });
+
+function toggleAuthMode() {
+  isLoginMode = !isLoginMode;
+  const title = document.getElementById("modalTitle");
+  const sub = document.getElementById("modalSub");
+  const grpFullName = document.getElementById("groupFullName");
+  const grpUsername = document.getElementById("groupUsername");
+  const btn = document.getElementById("loginBtn");
+  const toggleMsg = document.getElementById("toggleMessage");
+  const toggleLink = document.getElementById("toggleLink");
+  const err = document.getElementById("errMsg");
+  err.style.display = "none";
+
+  if (isLoginMode) {
+    title.textContent = "Welcome Back";
+    sub.textContent = "Sign in to access your dashboard";
+    grpFullName.style.display = "none";
+    grpUsername.style.display = "none";
+    btn.textContent = "Sign In";
+    toggleMsg.textContent = "Don't have an account?";
+    toggleLink.textContent = "Register";
+  } else {
+    title.textContent = "Create Account";
+    sub.textContent = "Get started with your plagiarism analysis";
+    grpFullName.style.display = "block";
+    grpUsername.style.display = "block";
+    btn.textContent = "Create Account";
+    toggleMsg.textContent = "Already have an account?";
+    toggleLink.textContent = "Sign In";
+  }
+}
+
+// Event Listeners for enter keys
+document.getElementById("loginPass").addEventListener("keydown", e => { if(e.key==="Enter") handleSubmit(); });
+document.getElementById("loginUser").addEventListener("keydown", e => { if(e.key==="Enter") handleSubmit(); });
+document.getElementById("regFullName").addEventListener("keydown", e => { if(e.key==="Enter") handleSubmit(); });
+document.getElementById("regUsername").addEventListener("keydown", e => { if(e.key==="Enter") handleSubmit(); });
+
 document.getElementById("loginModal").addEventListener("click", e => { if(e.target===e.currentTarget) closeModal(); });
+
+async function handleSubmit() {
+  if (isLoginMode) {
+    await doLogin();
+  } else {
+    await doRegister();
+  }
+}
 
 async function doLogin() {
   const username = document.getElementById("loginUser").value.trim();
@@ -189,13 +257,13 @@ async function doLogin() {
   const btn = document.getElementById("loginBtn");
   const err = document.getElementById("errMsg");
   err.style.display = "none";
-  if (!username || !password) { showErr("Please enter username and password."); return; }
+  if (!username || !password) { showErr("Please enter your email and password."); return; }
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>&nbsp;Signing in...';
   try {
     const res = await fetch(API + "/auth/login", {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({username, password, role: selRole})
+      body: JSON.stringify({email: username, password})
     });
     const data = await res.json();
     if (!res.ok) { showErr(data.detail || "Login failed."); return; }
@@ -209,11 +277,63 @@ async function doLogin() {
         : "student-dashboard/index.html";
     }, 700);
   } catch(e) {
-    showErr("Cannot reach server. Is the backend running on port 8000?");
+    showErr("Cannot reach server. Is the backend running on port 8000 and is the frontend served from an allowed origin?");
   } finally {
-    btn.disabled = false; btn.innerHTML = "Sign In";
+    btn.disabled = false; btn.innerHTML = isLoginMode ? "Sign In" : "Create Account";
   }
 }
+
+async function doRegister() {
+  const fullName = document.getElementById("regFullName").value.trim();
+  const username = document.getElementById("regUsername").value.trim();
+  const email = document.getElementById("loginUser").value.trim();
+  const password = document.getElementById("loginPass").value;
+  const btn = document.getElementById("loginBtn");
+  const err = document.getElementById("errMsg");
+  err.style.display = "none";
+
+  if (!fullName || !username || !email || !password) { showErr("Please fill in all fields."); return; }
+  if (fullName.length < 2) { showErr("Full name must be at least 2 characters."); return; }
+  if (username.length < 3) { showErr("Username must be at least 3 characters."); return; }
+  
+  const usernameRegex = /^[A-Za-z0-9_.-]+$/;
+  if (!usernameRegex.test(username)) {
+    showErr("Username can only contain letters, numbers, dots, hyphens, and underscores.");
+    return;
+  }
+  if (password.length < 8) { showErr("Password must be at least 8 characters."); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>&nbsp;Registering...';
+  try {
+    const res = await fetch(API + "/auth/register", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        full_name: fullName,
+        username: username,
+        email: email,
+        password: password,
+        role: selRole
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) { showErr(data.detail || "Registration failed."); return; }
+    localStorage.setItem("pg_token", data.access_token);
+    localStorage.setItem("pg_role",  data.role);
+    localStorage.setItem("pg_name",  data.full_name);
+    showToast("Registration successful! Welcome, " + data.full_name + "!", "success");
+    setTimeout(() => {
+      window.location.href = data.role === "teacher"
+        ? "teacher-dashboard/index.html"
+        : "student-dashboard/index.html";
+    }, 700);
+  } catch(e) {
+    showErr("Cannot reach server. Is the backend running on port 8000?");
+  } finally {
+    btn.disabled = false; btn.innerHTML = isLoginMode ? "Sign In" : "Create Account";
+  }
+}
+
 function showErr(msg) {
   const el = document.getElementById("errMsg");
   el.textContent = msg; el.style.display = "block";

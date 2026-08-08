@@ -1,49 +1,113 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
-from backend.routes.upload_routes import extract_text
+import logging
+import os
+from backend.auth.jwt_handler import require_role
+from backend.database.postgres import User
+from backend.services.text_preprocessing import extract_text
 from backend.services.similarity_service import check_text_similarity
 from backend.services.code_similarity_service import check_code_similarity
 from backend.services.scoring_engine import compute_plagiarism_score, get_flagged_sections
 from backend.services.code_preprocessing import structural_similarity
-import uuid
 
+logger = logging.getLogger("teacher_routes")
 router = APIRouter()
 
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB per file
+
 @router.post("/batch/upload")
-async def teacher_batch_upload(files: List[UploadFile] = File(...)):
+async def teacher_batch_upload(files: List[UploadFile] = File(...), user: User = Depends(require_role("teacher"))):
     if len(files) < 2:  raise HTTPException(400, "Upload at least 2 files.")
-    if len(files) > 30: raise HTTPException(400, "Maximum 30 files per batch.")
+    if len(files) > 15: raise HTTPException(400, "Maximum 15 files per batch for comparison.")
 
     results, texts = [], {}
     for file in files:
-        file_bytes = await file.read()
-        try:    text = extract_text(file_bytes, file.filename)
-        except ValueError:
-            results.append({"filename": file.filename, "error": "Unsupported file type",
-                             "plagiarism_score": None}); continue
-        if not text or len(text.strip()) < 30:
-            results.append({"filename": file.filename, "error": "No extractable text",
-                             "plagiarism_score": None}); continue
-        texts[file.filename] = text
-        sim    = check_text_similarity(text)
-        scores = compute_plagiarism_score(sim["all_similarities"])
-        results.append({
-            "filename": file.filename, "submission_id": str(uuid.uuid4())[:8],
-            "plagiarism_score": scores["plagiarism_score"],
-            "originality_score": scores["originality_score"],
-            "verdict": scores["verdict"],
-            "flagged_count": len(get_flagged_sections(sim["chunks"]))
-        })
+        # Check size cap before loading
+        file_bytes = await file.read(MAX_FILE_SIZE + 1)
+        if len(file_bytes) > MAX_FILE_SIZE:
+            results.append({
+                "filename": file.filename, 
+                "error": "File too large (Max 10MB)",
+                "plagiarism_score": None
+            })
+            continue
 
+        try:
+            text = extract_text(file_bytes, file.filename)
+        except ValueError as e:
+            results.append({
+                "filename": file.filename, 
+                "error": str(e),
+                "plagiarism_score": None
+            })
+            continue
+        except Exception as e:
+            logger.exception("Text extraction failed for batch file %s: %s", file.filename, e)
+            results.append({
+                "filename": file.filename, 
+                "error": "Failed to extract text",
+                "plagiarism_score": None
+            })
+            continue
+
+        if not text or len(text.strip()) < 30:
+            results.append({
+                "filename": file.filename, 
+                "error": "No extractable text (too short)",
+                "plagiarism_score": None
+            })
+            continue
+
+        texts[file.filename] = text
+        try:
+            # Performs the real-time internet query similarity scoring
+            sim = check_text_similarity(text)
+            scores = compute_plagiarism_score(sim["all_similarities"])
+            results.append({
+                "filename": file.filename,
+                "plagiarism_score": scores["plagiarism_score"],
+                "originality_score": scores["originality_score"],
+                "verdict": scores["verdict"],
+                "flagged_count": len(get_flagged_sections(sim["chunks"]))
+            })
+        except Exception as e:
+            logger.exception("Error checking similarity for batch file %s: %s", file.filename, e)
+            results.append({
+                "filename": file.filename,
+                "error": f"Similarity check failed: {str(e)}",
+                "plagiarism_score": None
+            })
+
+    # Pairwise comparison calculations between all uploaded files
     filenames = list(texts.keys())
     matrix = []
     for i, fn1 in enumerate(filenames):
         for j, fn2 in enumerate(filenames):
             if j <= i: continue
-            sim = _overlap(texts[fn1], texts[fn2])
+            
+            # Determine if both are code files
+            ext1 = os.path.splitext(fn1)[1].lower()
+            ext2 = os.path.splitext(fn2)[1].lower()
+            is_code = ext1 in (".py", ".js", ".java", ".c", ".cpp", ".ts", ".go", ".rs") and ext2 in (".py", ".js", ".java", ".c", ".cpp", ".ts", ".go", ".rs")
+            
+            if is_code:
+                # Use AST structural comparison
+                lang = "python"
+                if ext1 in (".js", ".ts"): lang = "javascript"
+                elif ext1 in (".cpp", ".c++", ".c"): lang = "cpp"
+                elif ext1 == ".java": lang = "java"
+                elif ext1 == ".go": lang = "go"
+                elif ext1 == ".rs": lang = "rust"
+                sim = structural_similarity(texts[fn1], texts[fn2], lang)
+            else:
+                # Use generic overlap comparison
+                sim = _overlap(texts[fn1], texts[fn2])
+                
             if sim >= 0.35:
-                matrix.append({"file_a": fn1, "file_b": fn2,
-                                "similarity": round(sim*100, 1), "flag": sim >= 0.60})
+                matrix.append({
+                    "file_a": fn1, "file_b": fn2,
+                    "similarity": round(sim*100, 1), "flag": sim >= 0.60
+                })
     matrix.sort(key=lambda x: x["similarity"], reverse=True)
 
     return {"total_files": len(files), "analysed": len(results), "results": results,
@@ -51,13 +115,22 @@ async def teacher_batch_upload(files: List[UploadFile] = File(...)):
             "high_risk_pairs": [m for m in matrix if m["flag"]]}
 
 @router.post("/compare")
-async def teacher_compare_two(file_a: UploadFile = File(...), file_b: UploadFile = File(...)):
-    bytes_a, bytes_b = await file_a.read(), await file_b.read()
+async def teacher_compare_two(file_a: UploadFile = File(...), file_b: UploadFile = File(...), user: User = Depends(require_role("teacher"))):
+    bytes_a = await file_a.read(MAX_FILE_SIZE + 1)
+    bytes_b = await file_b.read(MAX_FILE_SIZE + 1)
+    
+    if len(bytes_a) > MAX_FILE_SIZE or len(bytes_b) > MAX_FILE_SIZE:
+        raise HTTPException(413, "One of the files is too large. Limit is 10MB per file.")
+
     try:
         text_a = extract_text(bytes_a, file_a.filename)
         text_b = extract_text(bytes_b, file_b.filename)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("Text extraction error during pairwise comparison: %s", e)
+        raise HTTPException(422, f"Failed to extract text: {str(e)}")
+
     sim   = _overlap(text_a, text_b)
     ra    = check_text_similarity(text_a)
     rb    = check_text_similarity(text_b)
@@ -68,12 +141,27 @@ async def teacher_compare_two(file_a: UploadFile = File(...), file_b: UploadFile
             "preview_a": text_a[:800], "preview_b": text_b[:800]}
 
 @router.post("/compare/code")
-async def teacher_compare_code(file_a: UploadFile = File(...), file_b: UploadFile = File(...)):
-    code_a = (await file_a.read()).decode("utf-8", errors="ignore")
-    code_b = (await file_b.read()).decode("utf-8", errors="ignore")
-    sim    = structural_similarity(code_a, code_b)
-    ra     = check_code_similarity(code_a)
-    rb     = check_code_similarity(code_b)
+async def teacher_compare_code(file_a: UploadFile = File(...), file_b: UploadFile = File(...), user: User = Depends(require_role("teacher"))):
+    bytes_a = await file_a.read(MAX_FILE_SIZE + 1)
+    bytes_b = await file_b.read(MAX_FILE_SIZE + 1)
+
+    if len(bytes_a) > MAX_FILE_SIZE or len(bytes_b) > MAX_FILE_SIZE:
+        raise HTTPException(413, "One of the files is too large. Limit is 10MB per file.")
+
+    code_a = bytes_a.decode("utf-8", errors="ignore")
+    code_b = bytes_b.decode("utf-8", errors="ignore")
+    
+    ext = os.path.splitext(file_a.filename)[1].lower()
+    lang = "python"
+    if ext in (".js", ".ts"): lang = "javascript"
+    elif ext in (".cpp", ".c++", ".c"): lang = "cpp"
+    elif ext == ".java": lang = "java"
+    elif ext == ".go": lang = "go"
+    elif ext == ".rs": lang = "rust"
+
+    sim    = structural_similarity(code_a, code_b, lang)
+    ra     = check_code_similarity(code_a, lang)
+    rb     = check_code_similarity(code_b, lang)
     return {"file_a": file_a.filename, "file_b": file_b.filename,
             "structural_similarity": round(sim*100, 1), "verdict": _verdict(sim),
             "flagged_blocks_a": ra["flagged_blocks"][:5],
@@ -92,4 +180,3 @@ def _verdict(sim: float) -> str:
     if sim >= 0.55: return "🟠 High Similarity — Probable Copying"
     if sim >= 0.35: return "🟡 Moderate Similarity — Review Needed"
     return "🟢 Low Similarity — Likely Independent Work"
-
